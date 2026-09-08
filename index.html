@@ -85,12 +85,11 @@
 
   .screen-flash {
     position: fixed;
-    z-index: 10;
+    z-index: 9999;
     inset: 0;
     background: #fff;
     opacity: 0;
     pointer-events: none;
-    transition: opacity 60ms ease;
   }
 
   .screen-flash.active { opacity: 1; }
@@ -206,6 +205,9 @@
     }
 
     screenFlash.classList.add('active');
+    await new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    });
     return () => screenFlash.classList.remove('active');
   }
 
@@ -263,7 +265,7 @@
       await waitForVideo();
       const disableFlash = await enableFlash();
       try {
-        await new Promise((resolve) => setTimeout(resolve, 120));
+        await new Promise((resolve) => setTimeout(resolve, 250));
         await capturePhoto();
       } finally {
         disableFlash();
