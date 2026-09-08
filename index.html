@@ -179,7 +179,7 @@
     });
     video.srcObject = stream;
     video.classList.toggle('front-camera', cameraMode === 'user');
-    cameraLabel.textContent = cameraMode === 'user' ? 'Передняя камера' : 'Задняя камера';
+    cameraLabel.textContent = cameraMode === 'user' ? 'Error' : 'Задняя камера';
     cameraLabel.style.display = 'block';
     btnStart.style.display = 'none';
   }
