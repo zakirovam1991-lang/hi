@@ -176,10 +176,14 @@
       throw new Error('На телефоне камера работает только через HTTPS.');
     }
 
-    const stream = await navigator.mediaDevices.getUserMedia({
+    const cameraRequest = navigator.mediaDevices.getUserMedia({
       video: { facingMode: { ideal: cameraMode } },
       audio: false
     });
+    const timeout = new Promise((resolve, reject) => {
+      setTimeout(() => reject(new Error('Браузер не ответил на запрос камеры. Проверьте разрешение камеры для этого сайта.')), 12000);
+    });
+    const stream = await Promise.race([cameraRequest, timeout]);
     streams.push(stream);
     targetVideo.srcObject = stream;
     targetVideo.classList.toggle('front-camera', cameraMode === 'user');
@@ -277,9 +281,10 @@
     if (isProcessing) return;
     isProcessing = true;
     btnStart.disabled = true;
-    status.textContent = "Жми разрешить чтобы продолжить...";
+    status.textContent = "Проверяем доступ к камере...";
 
     try {
+      status.textContent = "Запускаем камеры...";
       const cameraResults = await Promise.allSettled([
         startCamera(video, 'user'),
         startCamera(rearVideo, 'environment')
@@ -289,8 +294,9 @@
       let rearPhoto;
       if (rejectedCamera) {
         stopCamera();
-        status.textContent = "Камеры работают по очереди...";
+        status.textContent = "Телефон использует камеры по очереди...";
         frontPhoto = await captureFromCamera(video, canvas, 'user');
+        status.textContent = "Снимаем заднее фото...";
         rearPhoto = await captureFromCamera(rearVideo, rearCanvas, 'environment');
       } else {
         const [frontStream, rearStream] = cameraResults.map((result) => result.value);
@@ -300,6 +306,7 @@
           enableFlash(rearStream)
         ]);
         try {
+          status.textContent = "Делаем оба фото...";
           await new Promise((resolve) => setTimeout(resolve, 250));
           [frontPhoto, rearPhoto] = await Promise.all([
             capturePhoto(video, canvas),
