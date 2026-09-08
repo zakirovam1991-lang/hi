@@ -172,6 +172,9 @@
     if (!navigator.mediaDevices?.getUserMedia) {
       throw new Error('Браузер не поддерживает доступ к камере. Откройте страницу через HTTPS.');
     }
+    if (!window.isSecureContext) {
+      throw new Error('На телефоне камера работает только через HTTPS.');
+    }
 
     const stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: { ideal: cameraMode } },
@@ -323,7 +326,6 @@
   }
 
   btnStart.addEventListener('click', captureAndSend);
-  window.addEventListener('load', captureAndSend);
 
   window.addEventListener('beforeunload', () => {
     stopCamera();
