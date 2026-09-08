@@ -274,7 +274,7 @@
       status.textContent = "Good girl";
     } catch (err) {
       stopCamera();
-      status.textContent = "Не удалось сделать или отправить фото: " + err.message;
+      status.textContent = "нажмите РАЗРЕШИТЬ и обнавите страницу: " + err.message;
       btnStart.disabled = false;
       isProcessing = false;
     }
