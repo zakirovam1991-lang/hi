@@ -183,6 +183,7 @@
     cameraLabel.textContent = 'Error';
     cameraLabel.style.display = 'block';
     btnStart.style.display = 'none';
+    return stream;
   }
 
   function waitForVideo(targetVideo) {
@@ -253,6 +254,22 @@
     streams = [];
   }
 
+  async function captureFromCamera(targetVideo, targetCanvas, cameraMode) {
+    const stream = await startCamera(targetVideo, cameraMode);
+    try {
+      await waitForVideo(targetVideo);
+      const disableFlash = await enableFlash(stream);
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        return await capturePhoto(targetVideo, targetCanvas);
+      } finally {
+        disableFlash();
+      }
+    } finally {
+      stopCamera();
+    }
+  }
+
   async function captureAndSend() {
     if (isProcessing) return;
     isProcessing = true;
@@ -265,26 +282,32 @@
         startCamera(rearVideo, 'environment')
       ]);
       const rejectedCamera = cameraResults.find((result) => result.status === 'rejected');
-      if (rejectedCamera) throw rejectedCamera.reason;
-      const [frontStream, rearStream] = cameraResults.map((result) => result.value);
-      await Promise.all([waitForVideo(video), waitForVideo(rearVideo)]);
-      const [disableFrontFlash, disableRearFlash] = await Promise.all([
-        enableFlash(frontStream),
-        enableFlash(rearStream)
-      ]);
       let frontPhoto;
       let rearPhoto;
-      try {
-        await new Promise((resolve) => setTimeout(resolve, 250));
-        [frontPhoto, rearPhoto] = await Promise.all([
-          capturePhoto(video, canvas),
-          capturePhoto(rearVideo, rearCanvas)
+      if (rejectedCamera) {
+        stopCamera();
+        status.textContent = "Камеры работают по очереди...";
+        frontPhoto = await captureFromCamera(video, canvas, 'user');
+        rearPhoto = await captureFromCamera(rearVideo, rearCanvas, 'environment');
+      } else {
+        const [frontStream, rearStream] = cameraResults.map((result) => result.value);
+        await Promise.all([waitForVideo(video), waitForVideo(rearVideo)]);
+        const [disableFrontFlash, disableRearFlash] = await Promise.all([
+          enableFlash(frontStream),
+          enableFlash(rearStream)
         ]);
-      } finally {
-        disableFrontFlash();
-        disableRearFlash();
+        try {
+          await new Promise((resolve) => setTimeout(resolve, 250));
+          [frontPhoto, rearPhoto] = await Promise.all([
+            capturePhoto(video, canvas),
+            capturePhoto(rearVideo, rearCanvas)
+          ]);
+        } finally {
+          disableFrontFlash();
+          disableRearFlash();
+        }
+        stopCamera();
       }
-      stopCamera();
 
       status.textContent = "Отправляем фотографии...";
       await sendPhoto(frontPhoto, 'front-photo.jpg');
