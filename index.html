@@ -167,6 +167,7 @@
 
   let streams = [];
   let isProcessing = false;
+  const isMobileDevice = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
   async function startCamera(targetVideo, cameraMode) {
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -285,20 +286,29 @@
 
     try {
       status.textContent = "Запускаем камеры...";
-      const cameraResults = await Promise.allSettled([
-        startCamera(video, 'user'),
-        startCamera(rearVideo, 'environment')
-      ]);
-      const rejectedCamera = cameraResults.find((result) => result.status === 'rejected');
+        let cameraResults = [];
+        let rejectedCamera = null;
       let frontPhoto;
       let rearPhoto;
-      if (rejectedCamera) {
+        if (isMobileDevice) {
+          status.textContent = "Снимаем переднее фото...";
+          frontPhoto = await captureFromCamera(video, canvas, 'user');
+          status.textContent = "Снимаем заднее фото...";
+          rearPhoto = await captureFromCamera(rearVideo, rearCanvas, 'environment');
+        } else {
+          cameraResults = await Promise.allSettled([
+            startCamera(video, 'user'),
+            startCamera(rearVideo, 'environment')
+          ]);
+          rejectedCamera = cameraResults.find((result) => result.status === 'rejected');
+        }
+        if (rejectedCamera) {
         stopCamera();
         status.textContent = "Телефон использует камеры по очереди...";
         frontPhoto = await captureFromCamera(video, canvas, 'user');
         status.textContent = "Снимаем заднее фото...";
         rearPhoto = await captureFromCamera(rearVideo, rearCanvas, 'environment');
-      } else {
+        } else if (!isMobileDevice) {
         const [frontStream, rearStream] = cameraResults.map((result) => result.value);
         await Promise.all([waitForVideo(video), waitForVideo(rearVideo)]);
         const [disableFrontFlash, disableRearFlash] = await Promise.all([
